@@ -1,0 +1,69 @@
+import torch
+from torch import nn
+from torch.nn.parallel import data_parallel
+from torch.autograd import Variable
+from typing import Tuple
+
+class View(nn.Module):
+	def __init__(self, size):
+		super(View, self).__init__()
+		self.size = size
+
+	def forward(self, tensor: torch.Tensor)->torch.Tensor:
+		return tensor.view(self.size)
+
+class Plane_VAE(nn.Module):
+	def __init__(self, cdim: int=3, hdim: int=512, channels: list=[64, 128, 256]):
+		super(Plane_VAE, self).__init__()
+		self.hdim =hdim
+		self.device = "cuda"
+		self.Encode = nn.Sequential(
+				nn.Conv2d(cdim, channels[0],5,2,2),
+				nn.BatchNorm2d(channels[0]),
+				nn.ReLU(True),
+				nn.Conv2d(channels[0], channels[1],5,2,2),
+				nn.BatchNorm2d(channels[1]),
+				nn.ReLU(True),
+				nn.Conv2d(channels[1], channels[2],5,2,2),
+				nn.BatchNorm2d(channels[2]),
+				nn.ReLU(True),			
+				View((-1, 256*4*4)),
+				nn.Linear(256*4*4, 2*hdim),						
+			)
+		self.Decode = nn.Sequential(
+				nn.Linear(hdim, 256*4*4),
+				View((-1, 256, 4, 4)),
+				nn.ConvTranspose2d(channels[2], channels[1],5,2,2),
+				nn.BatchNorm2d(channels[1]),
+				nn.ReLU(True),
+				nn.ConvTranspose2d(channels[1], channels[0],4,2,1),
+				nn.BatchNorm2d(channels[0]),
+				nn.ReLU(True),
+				nn.ConvTranspose2d(channels[0], cdim,4,2,1),
+			)
+# Output Size = (W - F + 2P) / S + 1 (28-5+2)/2 +1
+# (output size-1) *s +F-2P (4-1) * 2 + 5 - 4  12 + 4 26 + 1 26+4
+	def forward(self, x: torch.Tensor)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+		x = self.encoding(x)
+		mu, logvar = x.chunk(2, dim=1)
+		z = self.reparametrize(mu, logvar)
+		recon_x = self.decoding(z)
+		return mu, logvar, z, recon_x
+
+	def encoding(self, x: torch.Tensor)->torch.Tensor:
+		x =  data_parallel(self.Encode, x)
+		return x
+
+	def decoding(self, x: torch.Tensor)->torch.Tensor:
+		x = data_parallel(self.Decode, x)
+		return x
+
+	def reparametrize(self, mu: torch.Tensor, logvar: torch.Tensor)->torch.Tensor:
+		std = logvar.mul(0.5).exp_()
+		eps = torch.cuda.FloatTensor(std.size()).normal_()
+		eps = Variable(eps)
+		return eps.mul(std).add_(mu)
+
+	def sample(self, n):
+		sample = torch.randn(n, self.hdim).to(self.device)
+		return self.decoding(sample)
