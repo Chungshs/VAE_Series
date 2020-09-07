@@ -8,7 +8,7 @@ from torchvision import datasets, transforms
 from torchvision.utils import save_image
 from tqdm import tqdm
 
-from plane_VAE import Plane_VAE
+from vanilla_VAE import Vanilla_VAE
 
 """ The code was adapted from:
 https://github.com/pytorch/examples/blob/master/vae/main.py
