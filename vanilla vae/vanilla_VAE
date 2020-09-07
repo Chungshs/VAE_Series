@@ -12,7 +12,7 @@ class View(nn.Module):
 	def forward(self, tensor: torch.Tensor)->torch.Tensor:
 		return tensor.view(self.size)
 
-class Plane_VAE(nn.Module):
+class Vanilla_VAE(nn.Module):
 	def __init__(self, cdim: int=3, hdim: int=512, channels: list=[64, 128, 256]):
 		super(Plane_VAE, self).__init__()
 		self.hdim =hdim
